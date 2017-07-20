@@ -10,7 +10,7 @@
 void* workerFunc(void* args);
 struct mem_block
 {
-    pthread_t *thread_id;
+    int thread_id;
     char* start_addr;
     size_t length;
 };
@@ -113,7 +113,7 @@ int main(int argc, char** argv)
             blocks[block_ind].start_addr = current_addr;
             blocks[block_ind].length = pages_per_block * pg_sz;
         }
-        blocks[block_ind].thread_id = threads[block_ind];
+        blocks[block_ind].thread_id = block_ind;
         current_addr += blocks[block_ind].length;
         data_count += blocks[block_ind].length;
         printf("Block[ %d ] | Start Address: %ld | Length: %zu\n", block_ind, (long)blocks[block_ind].start_addr, blocks[block_ind].length);
@@ -165,7 +165,6 @@ void* workerFunc(void* args)
     pthread_mutex_unlock(&suspend_mutex);
 
     struct mem_block *work_pack = (struct mem_block*) args;
-    printf("%ld\n", work_pack->thread_id);
-    printf("%ld\n", (long)work_pack->start_addr);
+    printf("TID: %ld, ADDR: %ld\n", (work_pack->thread_id),  (long)work_pack->start_addr);
     pthread_exit(0);
 }
