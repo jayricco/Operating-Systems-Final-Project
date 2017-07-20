@@ -147,10 +147,11 @@ int main(int argc, char** argv)
     init_flag = 1;
     pthread_cond_broadcast(&suspend_cond);
     pthread_mutex_unlock(&suspend_mutex);
-    for(block_ind = 0; block_ind < num_proc; block_ind++)
-    {
-        pthread_join(threads[block_ind], NULL);
-    }
+
+    pthread_join(threads[0], NULL);
+    pthread_join(threads[2], NULL);
+    pthread_join(threads[4], NULL);
+    pthread_join(threads[6], NULL);
 
     // Close all of our resources
     pthread_cond_destroy(&suspend_cond);
@@ -178,7 +179,6 @@ void* workerFunc(void* args)
     if(work_pack->slave_tid != -1)
     {
         printf("MASTER THREAD: TID: %ld, Slave TID: %ld, ADDR: %ld\n", (work_pack->thread_id),  work_pack->slave_tid, (long)work_pack->start_addr);
-        printf('Waiting for Thread: %d\n', work_pack->slave_tid);
         pthread_join(threads[work_pack->slave_tid], NULL);
     }
     else
