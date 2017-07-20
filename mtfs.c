@@ -62,7 +62,7 @@ int main(int argc, char** argv)
     }
 
     // Map file to memory.
-    map_addr = mmap(NULL, sb.st_size+1, PROT_READ & PROT_WRITE, MAP_SHARED, file_desc, (off_t)0);
+    map_addr = mmap(NULL, sb.st_size, PROT_READ & PROT_WRITE, MAP_SHARED, file_desc, (off_t)0);
     if(map_addr == NULL)
     {
         fprintf(stderr, "There was a problem mapping the file. \n");
@@ -125,7 +125,7 @@ int main(int argc, char** argv)
             blocks[block_ind].slave_tid = -1;
         }
         current_addr += blocks[block_ind].length;
-        data_count += blocks[block_ind].length;
+        data_count += szper;
         printf("Block[ %d ] | Start Address: %ld | Length: %zu\n", block_ind, (long)blocks[block_ind].start_addr, blocks[block_ind].length);
     }
     printf("\nTotal File Size: %lld, Total Data Encapsulated: %d\n", sb.st_size, data_count);
