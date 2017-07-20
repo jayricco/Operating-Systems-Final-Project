@@ -11,6 +11,8 @@ void* workerFunc(void* args);
 struct mem_block
 {
     int thread_id;
+    int slave_tid;
+
     char* start_addr;
     size_t length;
 };
@@ -114,6 +116,14 @@ int main(int argc, char** argv)
             blocks[block_ind].length = pages_per_block * pg_sz;
         }
         blocks[block_ind].thread_id = block_ind;
+        if(block_ind % 2 == 0)
+        {
+            blocks[block_ind].slave_tid = block_ind+1;
+        }
+        else
+        {
+            blocks[block_ind].slave_tid = -1;
+        }
         current_addr += blocks[block_ind].length;
         data_count += blocks[block_ind].length;
         printf("Block[ %d ] | Start Address: %ld | Length: %zu\n", block_ind, (long)blocks[block_ind].start_addr, blocks[block_ind].length);
@@ -165,6 +175,16 @@ void* workerFunc(void* args)
     pthread_mutex_unlock(&suspend_mutex);
 
     struct mem_block *work_pack = (struct mem_block*) args;
-    printf("TID: %ld, ADDR: %ld\n", (work_pack->thread_id),  (long)work_pack->start_addr);
+    if(work_pack->slave_tid != -1)
+    {
+        printf("MASTER THREAD: TID: %ld, Slave TID: %ld, ADDR: %ld\n", (work_pack->thread_id),  work_pack->slave_tid, (long)work_pack->start_addr);
+        printf('Waiting for Thread: %d\n', work_pack->slave_tid);
+        pthread_join(threads[work_pack->slave_tid], NULL);
+    }
+    else
+    {
+        printf("TID: %ld, ADDR: %ld\n", (work_pack->thread_id), (long)work_pack->start_addr);
+
+    }
     pthread_exit(0);
 }
