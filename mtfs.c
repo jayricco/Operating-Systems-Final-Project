@@ -71,7 +71,11 @@ int main(int argc, char** argv)
     }
 
     // Map file to memory.
+<<<<<<< HEAD
     map_addr = mmap(NULL, sb.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, file_desc, (off_t)0);
+=======
+    map_addr = mmap(NULL, sb.st_size, PROT_READ & PROT_WRITE, MAP_SHARED, file_desc, (off_t)0);
+>>>>>>> 4c6f6eb9b29b25a4dea208690812ac700cd1b7ef
     if(map_addr == NULL)
     {
         fprintf(stderr, "There was a problem mapping the file. \n");
