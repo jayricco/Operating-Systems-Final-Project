@@ -6,6 +6,9 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <math.h>
+# include <string.h>
+
+
 
 void* workerFunc(void* args);
 struct mem_block
@@ -26,7 +29,8 @@ int init_flag= 0;
 
 int main(int argc, char** argv)
 {
-    char* map_addr;
+    FILE* file;
+    void* map_addr;
     int file_desc;
     struct stat sb;
     off_t offset, pa_offset;
@@ -43,7 +47,12 @@ int main(int argc, char** argv)
         exit(1);
     }
     // Open our file and make sure it actually exists.
-    if((file_desc = open(argv[1], O_RDONLY)) == -1)
+    if((file = fopen(argv[1], "r+")) == NULL)
+    {
+        fprintf(stderr, "There was an issue opening the file.\n");
+        exit(2);
+    }
+    if((file_desc = fileno(file)) == -1)
     {
         fprintf(stderr, "There was an issue opening the file.\n");
         exit(2);
@@ -62,7 +71,7 @@ int main(int argc, char** argv)
     }
 
     // Map file to memory.
-    map_addr = mmap(NULL, sb.st_size+1, PROT_READ & PROT_WRITE, MAP_SHARED, file_desc, (off_t)0);
+    map_addr = mmap(NULL, sb.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, file_desc, (off_t)0);
     if(map_addr == NULL)
     {
         fprintf(stderr, "There was a problem mapping the file. \n");
@@ -89,8 +98,8 @@ int main(int argc, char** argv)
         exit(7);
     }
 
-    szper = ceil(sb.st_size/num_proc);
-    pages_per_block = ceil((((float)sb.st_size)/num_proc + sb.st_size % num_proc)/pg_sz);
+    szper = (size_t) ceil(sb.st_size / num_proc);
+    pages_per_block = (int) ceilf((((float)sb.st_size) / num_proc + sb.st_size % num_proc) / pg_sz);
     // ========================== Print out info ===============================
     printf("This system has { %d } processors for use.\n", num_proc);
     printf("This system's page size is: %d\n", pg_sz);
@@ -108,12 +117,12 @@ int main(int argc, char** argv)
         if(block_ind == num_proc - 1)
         {
             blocks[block_ind].start_addr = current_addr;
-            blocks[block_ind].length = sb.st_size - data_count;
+            blocks[block_ind].length = (size_t) (sb.st_size - data_count);
         }
         else
         {
             blocks[block_ind].start_addr = current_addr;
-            blocks[block_ind].length = pages_per_block * pg_sz;
+            blocks[block_ind].length = (pages_per_block * pg_sz);
         }
         blocks[block_ind].thread_id = block_ind;
         if(block_ind % 2 == 0)
@@ -125,7 +134,7 @@ int main(int argc, char** argv)
             blocks[block_ind].slave_tid = -1;
         }
         current_addr += blocks[block_ind].length;
-        data_count += blocks[block_ind].length;
+        data_count += szper;
         printf("Block[ %d ] | Start Address: %ld | Length: %zu\n", block_ind, (long)blocks[block_ind].start_addr, blocks[block_ind].length);
     }
     printf("\nTotal File Size: %lld, Total Data Encapsulated: %d\n", sb.st_size, data_count);
@@ -163,8 +172,20 @@ int main(int argc, char** argv)
         fprintf(stderr, "Could not unmap file\n");
         exit(9);
     }
-
+    fclose(file);
     return 0;
+}
+
+int cmpfunc (const void * a, const void * b)
+{
+    const char * pa = (const char *) a;
+    const char * pb = (const char *) b;
+    char* keya[10];
+    char* keyb[10];
+    strncpy(keya, pa, 10);
+    strncpy(keyb, pb, 10);
+
+    return strcmp(keya,keyb);
 }
 void* workerFunc(void* args)
 {
@@ -174,16 +195,17 @@ void* workerFunc(void* args)
         pthread_cond_wait(&suspend_cond, &suspend_mutex);
     }
     pthread_mutex_unlock(&suspend_mutex);
-
     struct mem_block *work_pack = (struct mem_block*) args;
+    qsort((work_pack->start_addr), work_pack->length / (size_t)64.0 , 64, cmpfunc);
+
     if(work_pack->slave_tid != -1)
     {
-        printf("MASTER THREAD: TID: %ld, Slave TID: %ld, ADDR: %ld\n", (work_pack->thread_id),  work_pack->slave_tid, (long)work_pack->start_addr);
+        printf("MASTER THREAD: TID: %i, Slave TID: %i, ADDR: %ld\n", (work_pack->thread_id),  work_pack->slave_tid, (long)work_pack->start_addr);
         pthread_join(threads[work_pack->slave_tid], NULL);
     }
     else
     {
-        printf("TID: %ld, ADDR: %ld\n", (work_pack->thread_id), (long)work_pack->start_addr);
+        printf("TID: %i, ADDR: %ld\n", (work_pack->thread_id), (long)work_pack->start_addr);
 
     }
     pthread_exit(0);
