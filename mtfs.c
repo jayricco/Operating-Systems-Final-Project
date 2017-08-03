@@ -16,7 +16,7 @@ void print_array(char* start, size_t len);
 void* workerFunc(void* args);
 int cmpfunc (const void * a, const void * b);
 int test_ordered(char* start, size_t len);
-int mergeFunction(void* block_addr_1, size_t block_length_1, void* block_addr_2, size_t block_length_2);
+int mergeFunction(char* block_addr_1, size_t block_length_1, char* block_addr_2, size_t block_length_2);
 
 struct mem_block
 {
@@ -38,7 +38,7 @@ pthread_mutex_t suspend_mutex;
 
 int init_flag = 0, verbose_flag = 0, test_flag = 0;
 int num_runs = 1;
-
+float total_tight_time = 0.0;
 int main(int argc, char** argv)
 {
     FILE* file;
@@ -220,7 +220,7 @@ int main(int argc, char** argv)
             if(block_ind % 2 == 0)
             {
                 blocks[block_ind].wait_skip = 1;
-                blocks[block_ind].wait_skip_limit = (block_ind == 0 || block_ind == total_num_threads/2) ? total_num_threads/2 : (int)log(total_num_threads)/log(2.0) - 1;
+                blocks[block_ind].wait_skip_limit = (block_ind == 0 || block_ind == total_num_threads/2) ? total_num_threads/2 : (int)(log(total_num_threads)/log(2.0)) - 1;
             }
             else
             {
@@ -251,7 +251,7 @@ int main(int argc, char** argv)
             printf("Starting MergeSort...\n");
             printf("==================================================================\n");
         }
-        
+        total_tight_time = 0.0;
         struct timespec time_start, time_end;
         
         int level = 0;
@@ -332,9 +332,10 @@ int main(int argc, char** argv)
         munmap(map_addr, file_stats.st_size);
     }
     run_time_avg /= num_runs;
+    total_tight_time /= num_runs;
     if(test_flag == 1)
     {
-        printf("Avg run-time for %d threads over %d runs: %f\n", total_num_threads, num_runs, run_time_avg);
+        printf("Avg run-time for %d threads over %d runs: %f | (tight): %f\n", total_num_threads, num_runs, run_time_avg, total_tight_time);
     }
     fclose(file);
     
@@ -420,7 +421,7 @@ void* workerFunc(void* args)
 // ------------------>
     
     qsort_time = (time_finish.tv_sec + ((float)time_finish.tv_nsec / 1000000000.0)) - (time_start.tv_sec + ((float)time_start.tv_nsec / 1000000000.0));
-    
+    total_tight_time += qsort_time;
     if(verbose_flag == 1)
     {
         printf("Thread [ %d ]: QSort took %f sec to complete.\n", work_pack->thread_id, qsort_time);
@@ -454,6 +455,7 @@ void* workerFunc(void* args)
 // ----------------->
             
             merge_time = (time_finish.tv_sec + ((float)time_finish.tv_nsec / 1000000000.0)) - (time_start.tv_sec + ((float)time_start.tv_nsec / 1000000000.0));
+            total_tight_time += merge_time;
             if(verbose_flag == 1)
             {
                 printf("Thread [ %d ]: Merge took %f sec to complete.\n", work_pack->thread_id, merge_time);
@@ -471,51 +473,62 @@ void* workerFunc(void* args)
 }
 
 
-int mergeFunction(void* block_addr_1, size_t block_length_1, void* block_addr_2, size_t block_length_2)
+int mergeFunction(char* block_addr_1, size_t block_length_1, char* block_addr_2, size_t block_length_2)
 {
     //Calculate the final size of the merge block.
     size_t final_size = block_length_1 + block_length_2;
-    unsigned int b1_ind = 0, b2_ind = 0, merge_ind = 0;
-    unsigned int n_b1 = block_length_1/RECORD_SIZE, n_b2 = block_length_2/RECORD_SIZE;
-    char* merge_map;
-    unsigned int data_copied = 0;
+    unsigned long b1_ind = 0, b2_ind = 0, merge_ind = 0;
+    unsigned long n_b1 = block_length_1/RECORD_SIZE, n_b2 = block_length_2/RECORD_SIZE;
+    unsigned long data_copied = 0;
+    char* block_1_copy;
+    char* block_2_copy;
+    char* merge_addr;
+    merge_addr = block_addr_1;
     //printf("Merge Block Size: %ld\n", final_size);
-    if((merge_map = mmap(NULL, final_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0)) == NULL)
+    if((block_1_copy = (char*) mmap(NULL, block_length_1, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0)) == NULL)
     {
         return -1;
     }
+    // copy block 1 to alternate location
+    memcpy((char*) block_1_copy, (char*) block_addr_1, block_length_1);
+    if((block_2_copy = (char*) mmap(NULL, block_length_2, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0)) == NULL)
+    {
+        return -1;
+    }
+    // copy block 2 to alternate location
+    memcpy((char*) block_2_copy, (char*) block_addr_2, block_length_2);
     
     while(b1_ind < n_b1 || b2_ind < n_b2)
     {
         if(b1_ind == n_b1)
         {
             // Complete transfer for B1.
-            memcpy((char*) (merge_map + (merge_ind++ * RECORD_SIZE)), (char*) (block_addr_2 + (b2_ind++ * RECORD_SIZE)), RECORD_SIZE);
+            memcpy((char*) (merge_addr + (merge_ind++ * RECORD_SIZE)), (char*) (block_2_copy + (b2_ind++ * RECORD_SIZE)), RECORD_SIZE);
         }
         else if(b2_ind == n_b2)
         {
             //Complete transfer for B2.
-            memcpy((char*) (merge_map + (merge_ind++ * RECORD_SIZE)), (char*) (block_addr_1 + (b1_ind++ * RECORD_SIZE)), RECORD_SIZE);
+            memcpy((char*) (merge_addr + (merge_ind++ * RECORD_SIZE)), (char*) (block_1_copy + (b1_ind++ * RECORD_SIZE)), RECORD_SIZE);
         }
         else
         {
-            int cmp_res = strncmp((char*) (block_addr_1 + (b1_ind * RECORD_SIZE)), (char*) (block_addr_2 + (b2_ind * RECORD_SIZE)), KEY_LENGTH);
+            int cmp_res = strncmp((char*) (block_1_copy + (b1_ind * RECORD_SIZE)), (char*) (block_2_copy + (b2_ind * RECORD_SIZE)), KEY_LENGTH);
             if(cmp_res == 0)
             {
                 //Transfer element from both B1 & B2 in-place.
-                memcpy((char*) (merge_map + (merge_ind++ * RECORD_SIZE)), (char*) (block_addr_1 + (b1_ind++ * RECORD_SIZE)), RECORD_SIZE);
-                memcpy((char*) (merge_map + (merge_ind++ * RECORD_SIZE)), (char*) (block_addr_2 + (b2_ind++ * RECORD_SIZE)), RECORD_SIZE);
+                memcpy((char*)(merge_addr + (merge_ind++ * RECORD_SIZE)), (char*) (block_1_copy + (b1_ind++ * RECORD_SIZE)), RECORD_SIZE);
+                memcpy((char*)(merge_addr + (merge_ind++ * RECORD_SIZE)), (char*) (block_2_copy + (b2_ind++ * RECORD_SIZE)), RECORD_SIZE);
                 data_copied += RECORD_SIZE;
             }
             else if(cmp_res < 0)
             {
                 //Transfer element from B1.
-                memcpy((char*) (merge_map + (merge_ind++ * RECORD_SIZE)), (char*) (block_addr_1 + (b1_ind++ * RECORD_SIZE)), RECORD_SIZE);
+                memcpy((char*) (merge_addr + (merge_ind++ * RECORD_SIZE)), (char*) (block_1_copy + (b1_ind++ * RECORD_SIZE)), RECORD_SIZE);
             }
             else
             {
                 //Transfer element from B2.
-                memcpy((char*) (merge_map + (merge_ind++ * RECORD_SIZE)), (char*) (block_addr_2 + (b2_ind++ * RECORD_SIZE)), RECORD_SIZE);
+                memcpy((char*) (merge_addr + (merge_ind++ * RECORD_SIZE)), (char*) (block_2_copy + (b2_ind++ * RECORD_SIZE)), RECORD_SIZE);
             }
         }
         data_copied += RECORD_SIZE;
@@ -527,25 +540,10 @@ int mergeFunction(void* block_addr_1, size_t block_length_1, void* block_addr_2,
     }
     if(verbose_flag == 1)
     {
-        printf("Total Data Copied to Merge Map: %u\n", data_copied);
+        printf("Total Data Copied to Merge Map: %lu\n", data_copied);
     }
     
-    //Copy Merged data back to original file.
-    merge_ind = 0;
-    for(b1_ind = 0; b1_ind < n_b1; b1_ind++)
-    {
-        memcpy((char*) (block_addr_1 + (b1_ind * RECORD_SIZE)), (char*) (merge_map + (merge_ind++ * RECORD_SIZE)), RECORD_SIZE);
-    }
-    for(b2_ind = 0; b2_ind < n_b2; b2_ind++)
-    {
-        memcpy((char*) (block_addr_2 + (b2_ind * RECORD_SIZE)), (char*) (merge_map + (merge_ind++ * RECORD_SIZE)), RECORD_SIZE);
-    }
-    
-    if(verbose_flag == 1)
-    {
-        printf("%lx -> %lx | %lx\n", (unsigned long) merge_map, (unsigned long) merge_map + (merge_ind * RECORD_SIZE), (unsigned long) merge_map + final_size);
-    }
-    
-    munmap(merge_map, final_size);
+    munmap((void*) block_1_copy, block_length_1);
+    munmap((void*) block_2_copy, block_length_2);
     return 0;
 }

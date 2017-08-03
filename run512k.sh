@@ -7,12 +7,12 @@ read -s -t 2 -p "Ready to run? (y/n): " -n 1 response
 printf "\n"
 
 if [[ $response == 'y' || $response == 'Y' ]]; then
-    for num_threads in 1 2 4 8 16 32
+    for num_threads in 1 2 4 8 16
     do
         if [[ $num_threads == 1 ]]; then
-            ./mtfs -t 10 -n $num_threads data_512k
+            ./mtfs -v -n $num_threads data_512k
         else
-            ./mtfs -t 10 -n $num_threads data_512k
+            ./mtfs -v -n $num_threads data_512k
         fi
     done
 fi
